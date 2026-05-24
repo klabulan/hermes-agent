@@ -15,7 +15,6 @@ import os
 import tempfile
 import html as _html
 import re
-import time as _time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
@@ -438,7 +437,6 @@ class TelegramAdapter(BasePlatformAdapter):
         # surfaces a failure so callers (cron, send_message_tool) can
         # fall back to a fresh HTTP session.
         self._send_path_degraded: bool = False
-        self._last_reconnect_error_at: float = 0.0
         # DM Topics: map of topic_name -> message_thread_id (populated at startup)
         self._dm_topics: Dict[str, int] = {}
         # Track forum chats where we've already registered bot commands
@@ -886,7 +884,6 @@ class TelegramAdapter(BasePlatformAdapter):
         self._polling_network_error_count += 1
         attempt = self._polling_network_error_count
         self._send_path_degraded = True
-        self._last_reconnect_error_at = _time.monotonic()
 
         if attempt > MAX_NETWORK_RETRIES:
             message = (
@@ -1895,7 +1892,9 @@ class TelegramAdapter(BasePlatformAdapter):
             # the message never reaches the recipient.  Probe the send
             # path with a lightweight getMe() so callers see a failure
             # and can fall through to the standalone delivery path.
-            if self._send_path_degraded and self._bot:
+            # getattr() keeps test fixtures that build adapters via
+            # object.__new__() (no __init__) from hitting AttributeError.
+            if getattr(self, "_send_path_degraded", False) and self._bot:
                 try:
                     await asyncio.wait_for(self._bot.get_me(), 5)
                     logger.info("[%s] Post-send health probe passed, clearing degraded flag", self.name)
